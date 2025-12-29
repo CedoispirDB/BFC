@@ -1,13 +1,21 @@
+// gcc -g -Wall -Wextra bfc.c -o bfc
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+#include <stdbool.h>
 
 #define INIT_ARR 1024
+
+typedef struct
+{
+    int data;
+    bool visited;
+} Cell;
 
 // celulas
 typedef struct
 {
-    int *cells;
+    Cell *cells;
     size_t size;
     size_t cap;
 } Flow;
@@ -146,7 +154,7 @@ void cells_inc(Flow *f, size_t flow_pos)
     if (f->cap == f->size - 1)
     {
         size_t new_cap = f->cap ? f->cap * 2 : 1024;
-        int *tmp = realloc(f->cells, new_cap * sizeof(int));
+        Cell *tmp = realloc(f->cells, new_cap * sizeof(Cell));
         if (!tmp)
         {
             free_flow(f);
@@ -156,7 +164,8 @@ void cells_inc(Flow *f, size_t flow_pos)
         f->cells = tmp;
         for (size_t i = f->cap; i < new_cap; i++)
         {
-            f->cells[i] = 0;
+            f->cells[i].data = 0;
+            f->cells[i].visited = false;
         }
         f->cap = new_cap;
     }
@@ -166,7 +175,7 @@ void cells_inc(Flow *f, size_t flow_pos)
         assert("FLOW POSITION NOT VALID");
     }
 
-    f->cells[flow_pos] += 1;
+    f->cells[flow_pos].data += 1;
 }
 
 void parse(Flow *f, const Tokenizer t)
@@ -174,17 +183,35 @@ void parse(Flow *f, const Tokenizer t)
     f->size = 1; // account for cell #0
     size_t flow_pos = 0;
     size_t loop_b = 0;
-    // TODO : for -> while
-    for (size_t i = 0; i < t.size; i++)
+
+    size_t token_pos = 0;
+    size_t return_token = 0;
+
+    size_t loop_counter_index = 0;
+
+    bool in_loop = false;
+
+    int counter;
+
+    while (token_pos < t.size)
     {
-        char s = t.tokens[i].symbol;
+        char s = t.tokens[token_pos].symbol;
+        if (in_loop)
+        {
+            counter = f->cells[loop_counter_index].data;
+        }
+
         switch (s)
         {
         case '>':
             if (flow_pos != t.size - 1)
             {
+                if (!f->cells[flow_pos].visited)
+                {
+                    f->size++;
+                    f->cells[flow_pos].visited = true;
+                }
                 flow_pos++;
-                f->size++;
             }
             break;
         case '<':
@@ -195,25 +222,36 @@ void parse(Flow *f, const Tokenizer t)
             cells_inc(f, flow_pos);
             break;
         case '-':
-            f->cells[flow_pos]--;
+            f->cells[flow_pos].data--;
             break;
         case '.':
-            printf("%c", f->cells[flow_pos]);
+            printf("%c", f->cells[flow_pos].data);
             break;
         case ',':
             // TODO
             break;
         case '[':
+            // [10 , 8, 11]
             loop_b = flow_pos + 1;
+            return_token = token_pos + 1;
+            loop_counter_index = flow_pos == 0 ? flow_pos : flow_pos - 1;
+            in_loop = true;
             break;
         case ']':
+            if (counter == 0)
+            {
+                in_loop = false;
+                break;
+            }
             flow_pos = loop_b;
+            token_pos = return_token;
             break;
         default:
             continue;
         }
 
         s = '\0';
+        token_pos++;
     }
 }
 
@@ -238,10 +276,10 @@ int main(int argc, char *argv[])
 
     parse(&f, t);
 
-    printf("Flow size: %zu\n", f.size);
+    printf("\n\nFlow size: %zu\n", f.size);
     for (size_t i = 0; i < f.size; i++)
     {
-        printf("Cell #%zu = %zu\n", i, f.cells[i]);
+        printf("Cell #%zu = %d\n", i, f.cells[i].data);
     }
 
     print_tokenizer(t);
