@@ -1,24 +1,8 @@
-// gcc -g -Wall -Wextra bfc.c -o bfc
+// gcc -Wall -Wextra bfc.c -o bfc
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <stdbool.h>
-
-#define INIT_ARR 1024
-
-typedef struct
-{
-    int data;
-    bool visited;
-} Cell;
-
-// celulas
-typedef struct
-{
-    Cell *cells;
-    size_t size;
-    size_t cap;
-} Flow;
 
 typedef enum
 {
@@ -35,6 +19,20 @@ typedef enum
 
 typedef struct
 {
+    int data;
+    bool visited;
+} Cell;
+
+// celulas
+typedef struct
+{
+    Cell *cells;
+    size_t size;
+    size_t cap;
+} Flow;
+
+typedef struct
+{
     char symbol;
     token_kind kind;
 } Token;
@@ -47,6 +45,21 @@ struct Tokenizer
     size_t cap;
 };
 
+typedef struct
+{
+    size_t body_start;
+    size_t counter_index;
+} Loop;
+
+typedef struct
+{
+    Loop *loops;
+    size_t size;
+    size_t cap;
+    int index; // which loop we are in
+    bool running;
+} LoopStack;
+
 void free_tokens(Tokenizer *t)
 {
     free(t->tokens);
@@ -55,12 +68,51 @@ void free_tokens(Tokenizer *t)
     t->cap = 0;
 }
 
+void free_flow(Flow *f)
+{
+    free(f->cells);
+    f->cells = NULL;
+    f->size = 0;
+    f->cap = 0;
+}
+
+void free_loops(LoopStack *ls)
+{
+    free(ls->loops);
+    ls->loops = NULL;
+    ls->size = 0;
+    ls->cap = 0;
+    ls->index = 0;
+    ls->running = false;
+}
+
+void loop_append(LoopStack *l_stack, Loop loop)
+{
+    if (l_stack->cap == l_stack->size)
+    {
+        size_t new_cap = l_stack->cap ? l_stack->cap * 2 : 1024;
+        Loop *tmp = realloc(l_stack->loops, new_cap * sizeof(Loop));
+        if (!tmp)
+        {
+            free_loops(l_stack);
+            assert("NOT POSSIBLE TO REALLOC LOOPS");
+        }
+
+        l_stack->loops = tmp;
+        l_stack->cap = new_cap;
+    }
+
+    l_stack->loops[l_stack->size++] = loop;
+    l_stack->index++; // overflow?
+}
+
+// token should be *token?
 void token_append(Tokenizer *tokenizer, Token token)
 {
     if (tokenizer->cap == tokenizer->size)
     {
         size_t new_cap = tokenizer->cap ? tokenizer->cap * 2 : 1024;
-        Token *tmp = realloc(tokenizer->tokens, new_cap * sizeof(token));
+        Token *tmp = realloc(tokenizer->tokens, new_cap * sizeof(Token));
         if (!tmp)
         {
             free_tokens(tokenizer);
@@ -132,21 +184,16 @@ void read_tokens(Tokenizer *t, const char *file_path)
     }
 }
 
-void print_tokenizer(Tokenizer t)
+void print_tokenizer(Tokenizer t, bool all)
 {
     printf("Tokenizer size: %zu, cap: %zu\n", t.size, t.cap);
-    // for (size_t i = 0; i < t.size; i++)
-    // {
-    //     printf("Token symbol: %c\nToken kind: %d\n\n", t.tokens[i].symbol, t.tokens[i].kind);
-    // }
-}
 
-void free_flow(Flow *f)
-{
-    free(f->cells);
-    f->cells = NULL;
-    f->size = 0;
-    f->cap = 0;
+    if (!all)
+        return;
+    for (size_t i = 0; i < t.size; i++)
+    {
+        printf("Token symbol: %c\nToken kind: %d\n\n", t.tokens[i].symbol, t.tokens[i].kind);
+    }
 }
 
 void cells_inc(Flow *f, size_t flow_pos)
@@ -182,23 +229,36 @@ void parse(Flow *f, const Tokenizer t)
 {
     f->size = 1; // account for cell #0
     size_t flow_pos = 0;
-    size_t loop_b = 0;
 
     size_t token_pos = 0;
-    size_t return_token = 0;
-
-    size_t loop_counter_index = 0;
-
-    bool in_loop = false;
 
     int counter;
+
+    // Set up loop stack
+    LoopStack ls;
+    ls.loops = NULL;
+    ls.size = 0;
+    ls.cap = 0;
+    ls.index = -1;
+    ls.running = false;
 
     while (token_pos < t.size)
     {
         char s = t.tokens[token_pos].symbol;
-        if (in_loop)
+        // printf("token  %c at  %zu\n", s, token_pos);
+        // printf("Current symbol: %c\n", s);
+        if (ls.running && ls.index != -1 && f->cells != NULL)
         {
-            counter = f->cells[loop_counter_index].data;
+            // should end loop
+            if (f->cells[flow_pos].visited && f->cells[flow_pos].data == 0)
+            {
+                ls.running = false;
+                if (ls.index >= 0)
+                    ls.index--;
+            }
+
+            // printf("Counter: %d\n", counter);
+            // printf("loop index: %d, body start: %zu, counter index: %zu\n", ls.index, ls.loops[ls.index].body_start, ls.loops[ls.index].counter_index);
         }
 
         switch (s)
@@ -231,28 +291,40 @@ void parse(Flow *f, const Tokenizer t)
             // TODO
             break;
         case '[':
-            // [10 , 8, 11]
-            loop_b = flow_pos + 1;
-            return_token = token_pos + 1;
-            loop_counter_index = flow_pos == 0 ? flow_pos : flow_pos - 1;
-            in_loop = true;
+        {
+            Loop new_loop;
+            new_loop.body_start = token_pos + 1;
+            // printf("flow_pos %zu\n", flow_pos);
+            new_loop.counter_index = flow_pos;
+            ls.running = true;
+            loop_append(&ls, new_loop);
+            // printf("\n");
             break;
+        }
+        break;
         case ']':
-            if (counter == 0)
+            if (ls.running)
             {
-                in_loop = false;
-                break;
-            }
-            flow_pos = loop_b;
-            token_pos = return_token;
+                token_pos = ls.loops[ls.index].body_start;
+                // printf("\n");
+
+                continue;
+            } 
             break;
         default:
             continue;
         }
 
+        // if (ls.index != -1)
+        // {
+        //     printf("loop index: %d, body start: %zu, counter index: %zu\n", ls.index, ls.loops[ls.index].body_start, ls.loops[ls.index].counter_index);
+        // }
+
         s = '\0';
         token_pos++;
     }
+
+    free_loops(&ls);
 }
 
 int main(int argc, char *argv[])
@@ -276,13 +348,13 @@ int main(int argc, char *argv[])
 
     parse(&f, t);
 
-    printf("\n\nFlow size: %zu\n", f.size);
+    printf("Flow size: %zu\n", f.size);
     for (size_t i = 0; i < f.size; i++)
     {
         printf("Cell #%zu = %d\n", i, f.cells[i].data);
     }
 
-    print_tokenizer(t);
+    print_tokenizer(t, false);
 
     free_tokens(&t);
     free_flow(&f);
