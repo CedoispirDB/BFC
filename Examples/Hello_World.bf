@@ -21,13 +21,3 @@ The result of this is:
 Cell no :   0   1   2   3   4   5   6
 Contents:   0   0  72 104  88  32   8
 Pointer :   ^
-
->>.                     Cell #2 has value 72 which is 'H'
->---.                   Subtract 3 from Cell #3 to get 101 which is 'e'
-+++++++..+++.           Likewise for 'llo' from Cell #3
->>.                     Cell #5 is 32 for the space
-<-.                     Subtract 1 from Cell #4 for 87 to give a 'W'
-<.                      Cell #3 was set to 'o' from the end of 'Hello'
-+++.------.--------.    Cell #3 for 'rl' and 'd'
->>+.                    Add 1 to Cell #5 gives us an exclamation point
->++.                    And finally a newline from Cell #6

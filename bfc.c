@@ -258,7 +258,7 @@ void parse(Flow *f, const Tokenizer t)
             }
 
             // printf("Counter: %d\n", counter);
-            // printf("loop index: %d, body start: %zu, counter index: %zu\n", ls.index, ls.loops[ls.index].body_start, ls.loops[ls.index].counter_index);
+            printf("loop index: %d, body start: %zu, flow_pos: %zu = %d\n", ls.index, ls.loops[ls.index].body_start, flow_pos, f->cells[flow_pos].data);
         }
 
         switch (s)
